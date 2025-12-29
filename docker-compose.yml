@@ -1,0 +1,21 @@
+services:
+  coolify-worker:
+    build: .
+    network_mode: host
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - PORT=3116
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - COOLIFY_API_URL=http://localhost:8000
+      - COOLIFY_API_TOKEN=${COOLIFY_API_TOKEN}
+      - COOLIFY_SERVER_UUID=${COOLIFY_SERVER_UUID}
+      - COOLIFY_PROJECT_UUID=${COOLIFY_PROJECT_UUID}
+      - COOLIFY_ENVIRONMENT_NAME=${COOLIFY_ENVIRONMENT_NAME:-production}
+      - S3_PUBLIC_ENDPOINT=${S3_PUBLIC_ENDPOINT}
+      - S3_BUCKET=${S3_BUCKET:-merfy-sites}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3116/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
