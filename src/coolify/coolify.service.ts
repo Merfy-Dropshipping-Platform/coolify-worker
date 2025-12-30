@@ -79,13 +79,10 @@ export class CoolifyService {
     try {
       const projects = await this.http<any[]>('/projects');
 
+      // Ищем проект ТОЛЬКО по tenantId в description - это гарантирует уникальность
+      // НЕ ищем по name, т.к. разные tenants могут иметь одинаковые названия компаний
       const found = Array.isArray(projects)
-        ? projects.find(
-            (p: any) =>
-              p?.name === tenantId ||
-              p?.name === companyName ||
-              p?.description?.includes(tenantId),
-          )
+        ? projects.find((p: any) => p?.description?.includes(`tenant: ${tenantId}`))
         : null;
 
       if (found?.uuid) {
@@ -93,11 +90,15 @@ export class CoolifyService {
         return { uuid: found.uuid, name: found.name };
       }
 
+      // Создаём новый проект с уникальным именем (companyName + короткий tenantId)
+      const shortTenantId = tenantId.slice(0, 8);
+      const projectName = companyName ? `${companyName} (${shortTenantId})` : `tenant-${shortTenantId}`;
+
       const result = await this.http<any>('/projects', {
         method: 'POST',
         body: JSON.stringify({
-          name: companyName || tenantId,
-          description: `Company: ${companyName} (tenant: ${tenantId})`,
+          name: projectName,
+          description: `Company: ${companyName || 'N/A'} (tenant: ${tenantId})`,
         }),
       });
 
