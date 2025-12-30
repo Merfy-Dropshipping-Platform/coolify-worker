@@ -260,7 +260,7 @@ export class CoolifyService {
   async health(): Promise<{ status: 'up' | 'down'; latencyMs: number }> {
     const start = Date.now();
     try {
-      await this.http('/');
+      await this.http('version');
       return { status: 'up', latencyMs: Date.now() - start };
     } catch {
       return { status: 'down', latencyMs: Date.now() - start };
