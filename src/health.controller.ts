@@ -24,7 +24,7 @@ export class HealthController {
     const start = Date.now();
 
     try {
-      const res = await fetch(`${coolifyUrl}/api/v1/`, {
+      const res = await fetch(`${coolifyUrl}/api/v1/version`, {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${coolifyToken}`,
