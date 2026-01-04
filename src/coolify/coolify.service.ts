@@ -2,6 +2,20 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { URL } from 'url';
 
+/**
+ * Sanitize string for Coolify API (only ASCII letters, numbers, spaces, and basic punctuation).
+ * Coolify name validation: letters, numbers, spaces, dashes, underscores, dots, slashes, colons, parentheses.
+ */
+function sanitizeForCoolify(input: string): string {
+  // Remove all non-ASCII characters (including Cyrillic)
+  // Keep only: a-z A-Z 0-9 space - _ . / : ( )
+  return input
+    .replace(/[^\x00-\x7F]/g, '') // Remove non-ASCII
+    .replace(/[^a-zA-Z0-9\s\-_./:()\[\]{}|~`*@#%&+=!?,'"]/g, '') // Keep only allowed chars
+    .replace(/\s+/g, ' ') // Collapse multiple spaces
+    .trim();
+}
+
 @Injectable()
 export class CoolifyService {
   private readonly logger = new Logger(CoolifyService.name);
@@ -91,14 +105,25 @@ export class CoolifyService {
       }
 
       // Создаём новый проект с уникальным именем (companyName + короткий tenantId)
+      // ВАЖНО: Coolify API не принимает кириллицу — санитизируем
       const shortTenantId = tenantId.slice(0, 8);
-      const projectName = companyName ? `${companyName} (${shortTenantId})` : `tenant-${shortTenantId}`;
+      const sanitizedCompanyName = sanitizeForCoolify(companyName || '');
+
+      // Если после санитизации название пустое — используем только tenantId
+      const projectName = sanitizedCompanyName
+        ? `${sanitizedCompanyName} (${shortTenantId})`
+        : `tenant-${shortTenantId}`;
+
+      // Description тоже санитизируем
+      const sanitizedDescription = sanitizeForCoolify(`Company: ${companyName || 'N/A'} (tenant: ${tenantId})`);
+
+      this.logger.log(`Creating project: name="${projectName}", original="${companyName}"`);
 
       const result = await this.http<any>('/projects', {
         method: 'POST',
         body: JSON.stringify({
           name: projectName,
-          description: `Company: ${companyName || 'N/A'} (tenant: ${tenantId})`,
+          description: sanitizedDescription || `tenant: ${tenantId}`,
         }),
       });
 
