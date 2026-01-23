@@ -39,7 +39,16 @@ export class CoolifyService {
     }
   }
 
-  private async http<T = any>(path: string, init?: RequestInit): Promise<T> {
+  /**
+   * HTTP запрос с retry и exponential backoff.
+   * Повторяет запрос при ошибках 5xx и network errors.
+   */
+  private async http<T = any>(
+    path: string,
+    init?: RequestInit,
+    retries = 3,
+    baseDelayMs = 1000,
+  ): Promise<T> {
     if (!this.apiUrl || !this.apiToken) {
       throw new Error('Coolify API not configured');
     }
@@ -71,19 +80,55 @@ export class CoolifyService {
       ...(init?.headers as any),
     };
 
-    const res = await fetch(url, { ...init, headers });
-    const hasPayload = res.status !== 204;
-    const payload = hasPayload ? await res.json().catch(() => null) : null;
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch(url, { ...init, headers });
+        const hasPayload = res.status !== 204;
+        const payload = hasPayload ? await res.json().catch(() => null) : null;
 
-    if (!res.ok) {
-      this.logger.warn(
-        `Coolify API ${init?.method ?? 'GET'} ${path} failed: ${res.status} ${
-          payload ? JSON.stringify(payload) : ''
-        }`,
-      );
-      throw new Error(`coolify_api_${res.status}`);
+        if (!res.ok) {
+          // Retry on 5xx errors
+          if (res.status >= 500 && attempt < retries) {
+            const delayMs = baseDelayMs * Math.pow(2, attempt);
+            this.logger.warn(
+              `Coolify API ${init?.method ?? 'GET'} ${path} failed with ${res.status}, retrying in ${delayMs}ms (attempt ${attempt + 1}/${retries})`,
+            );
+            await this.delay(delayMs);
+            continue;
+          }
+
+          this.logger.warn(
+            `Coolify API ${init?.method ?? 'GET'} ${path} failed: ${res.status} ${
+              payload ? JSON.stringify(payload) : ''
+            }`,
+          );
+          throw new Error(`coolify_api_${res.status}`);
+        }
+        return payload as T;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        // Retry on network errors (not API errors)
+        if (
+          attempt < retries &&
+          !lastError.message.startsWith('coolify_api_')
+        ) {
+          const delayMs = baseDelayMs * Math.pow(2, attempt);
+          this.logger.warn(
+            `Coolify API ${init?.method ?? 'GET'} ${path} network error: ${lastError.message}, retrying in ${delayMs}ms (attempt ${attempt + 1}/${retries})`,
+          );
+          await this.delay(delayMs);
+          continue;
+        }
+        throw lastError;
+      }
     }
-    return payload as T;
+    throw lastError ?? new Error('Unknown error');
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
