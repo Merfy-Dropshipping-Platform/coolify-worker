@@ -3,16 +3,24 @@ import { ConfigService } from '@nestjs/config';
 import { URL } from 'url';
 
 /**
- * Sanitize string for Coolify API (only ASCII letters, numbers, spaces, and basic punctuation).
- * Coolify name validation: letters, numbers, spaces, dashes, underscores, dots, slashes, colons, parentheses.
+ * Sanitize string for Coolify API name field.
+ * Allowed: letters (including Unicode), numbers, spaces, - _ . / @ &
  */
-function sanitizeForCoolify(input: string): string {
-  // Remove all non-ASCII characters (including Cyrillic)
-  // Keep only: a-z A-Z 0-9 space - _ . / : ( )
+function sanitizeName(input: string): string {
   return input
-    .replace(/[^\x00-\x7F]/g, '') // Remove non-ASCII
-    .replace(/[^a-zA-Z0-9\s\-_./:()\[\]{}|~`*@#%&+=!?,'"]/g, '') // Keep only allowed chars
-    .replace(/\s+/g, ' ') // Collapse multiple spaces
+    .replace(/[^a-zA-Z0-9\u00C0-\u024F\u0400-\u04FF\s\-_./@&]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Sanitize string for Coolify API description field.
+ * Allowed: letters (including Unicode), numbers, spaces, - _ . , ! ? ( ) ' " + = * / @ &
+ */
+function sanitizeDescription(input: string): string {
+  return input
+    .replace(/[^a-zA-Z0-9\u00C0-\u024F\u0400-\u04FF\s\-_.,!?()'"+*=/@&]/g, '')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
@@ -150,17 +158,15 @@ export class CoolifyService {
       }
 
       // Создаём новый проект с уникальным именем (companyName + короткий tenantId)
-      // ВАЖНО: Coolify API не принимает кириллицу — санитизируем
       const shortTenantId = tenantId.slice(0, 8);
-      const sanitizedCompanyName = sanitizeForCoolify(companyName || '');
+      const sanitizedCompanyName = sanitizeName(companyName || '');
 
       // Если после санитизации название пустое — используем только tenantId
       const projectName = sanitizedCompanyName
-        ? `${sanitizedCompanyName} (${shortTenantId})`
+        ? `${sanitizedCompanyName} - ${shortTenantId}`
         : `tenant-${shortTenantId}`;
 
-      // Description тоже санитизируем
-      const sanitizedDescription = sanitizeForCoolify(`Company: ${companyName || 'N/A'} (tenant: ${tenantId})`);
+      const sanitizedDescription = sanitizeDescription(`Company: ${companyName || 'N/A'} (tenant: ${tenantId})`);
 
       this.logger.log(`Creating project: name="${projectName}", original="${companyName}"`);
 
