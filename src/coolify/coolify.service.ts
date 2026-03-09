@@ -295,6 +295,11 @@ export class CoolifyService {
         method: 'PATCH',
         body: JSON.stringify({ domains: fqdn }),
       });
+
+      // Restart to force Traefik to pick up new domain and request SSL certificate
+      this.logger.log(`setDomain: restarting application ${appUuid} for domain ${domain}`);
+      await this.http(`/applications/${appUuid}/restart`, { method: 'POST' });
+
       return { success: true };
     } catch (e) {
       this.logger.error(`setDomain failed: ${e instanceof Error ? e.message : e}`);
