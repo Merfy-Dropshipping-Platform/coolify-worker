@@ -216,6 +216,20 @@ export class CoolifyService {
     }
 
     try {
+      // Idempotency guard: check if app with this FQDN already exists
+      try {
+        const existingApps = await this.http<any[]>('/applications', { method: 'GET' });
+        const existing = Array.isArray(existingApps)
+          ? existingApps.find((a) => a.fqdn === fqdn || a.name === name)
+          : undefined;
+        if (existing?.uuid) {
+          this.logger.log(`App already exists for ${fqdn}: ${existing.uuid}, skipping creation`);
+          return { uuid: existing.uuid, url: fqdn };
+        }
+      } catch (e) {
+        this.logger.warn(`Failed to check existing apps, proceeding with creation: ${e instanceof Error ? e.message : e}`);
+      }
+
       const appPayload = {
         project_uuid: projectUuid,
         server_uuid: this.serverUuid,
