@@ -33,6 +33,10 @@ export class CoolifyService {
   private readonly defaultProjectUuid: string;
   private readonly environmentName: string;
   private readonly wildcardDomain: string;
+  /** Префикс tenant-проектов Coolify. У прода `tenant-`; у dev `dev-tenant-`, чтобы контуры не делили проекты (spec 116). */
+  private readonly tenantPrefix: string;
+  /** Метка контура в описании проекта: у прода пустая (совместимость с существующими проектами). */
+  private readonly contourTag: string;
 
   constructor(private readonly configService: ConfigService) {
     this.apiUrl = this.configService.get<string>('COOLIFY_API_URL') || '';
@@ -41,6 +45,9 @@ export class CoolifyService {
     this.defaultProjectUuid = this.configService.get<string>('COOLIFY_PROJECT_UUID') || '';
     this.environmentName = this.configService.get<string>('COOLIFY_ENVIRONMENT_NAME') || 'production';
     this.wildcardDomain = this.configService.get<string>('COOLIFY_WILDCARD_DOMAIN') || 'merfy.ru';
+    this.tenantPrefix = this.configService.get<string>('COOLIFY_TENANT_PROJECT_PREFIX') || 'tenant-';
+    // Скобки () переживают sanitizeDescription, квадратные [] — нет.
+    this.contourTag = this.tenantPrefix === 'tenant-' ? '' : `(${this.tenantPrefix.replace(/-$/, '')}) `;
 
     if (!this.apiUrl || !this.apiToken) {
       this.logger.warn('Coolify API not fully configured');
@@ -139,6 +146,13 @@ export class CoolifyService {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  /** Проект этого tenant И этого контура: у прода описание без метки, у dev — с меткой `(dev-tenant) `. */
+  private isOwnTenantProject(description: string | undefined, tenantId: string): boolean {
+    // Старые проекты хранят «tenant: <id>», новые после sanitizeDescription — «tenant <id>» (двоеточие вырезается).
+    if (!description || !new RegExp(`tenant:? ${tenantId}`).test(description)) return false;
+    return this.contourTag ? description.startsWith(this.contourTag) : !description.startsWith('(');
+  }
+
   /**
    * getOrCreateProject — находит или создаёт Project в Coolify для tenant.
    */
@@ -149,7 +163,7 @@ export class CoolifyService {
       // Ищем проект ТОЛЬКО по tenantId в description - это гарантирует уникальность
       // НЕ ищем по name, т.к. разные tenants могут иметь одинаковые названия компаний
       const found = Array.isArray(projects)
-        ? projects.find((p: any) => p?.description?.includes(`tenant: ${tenantId}`))
+        ? projects.find((p: any) => this.isOwnTenantProject(p?.description, tenantId))
         : null;
 
       if (found?.uuid) {
@@ -163,10 +177,10 @@ export class CoolifyService {
 
       // Если после санитизации название пустое — используем только tenantId
       const projectName = sanitizedCompanyName
-        ? `${sanitizedCompanyName} - ${shortTenantId}`
-        : `tenant-${shortTenantId}`;
+        ? `${this.contourTag}${sanitizedCompanyName} - ${shortTenantId}`
+        : `${this.tenantPrefix}${shortTenantId}`;
 
-      const sanitizedDescription = sanitizeDescription(`Company: ${companyName || 'N/A'} (tenant: ${tenantId})`);
+      const sanitizedDescription = sanitizeDescription(`${this.contourTag}Company: ${companyName || 'N/A'} (tenant: ${tenantId})`);
 
       this.logger.log(`Creating project: name="${projectName}", original="${companyName}"`);
 
