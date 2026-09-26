@@ -5,7 +5,7 @@ services:
     restart: always
     environment:
       - NODE_ENV=production
-      - PORT=3116
+      - PORT=${PORT:-3116}   # dev-контур (spec 116): network_mode=host делит порты с прод-worker, порт задаётся env
       - RABBITMQ_URL=${RABBITMQ_URL}
       - COOLIFY_API_URL=http://localhost:8000
       - COOLIFY_API_TOKEN=${COOLIFY_API_TOKEN}
@@ -15,7 +15,7 @@ services:
       - S3_PUBLIC_ENDPOINT=${S3_PUBLIC_ENDPOINT}
       - S3_BUCKET=${S3_BUCKET:-merfy-sites}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3116/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:${PORT:-3116}/health"]
       interval: 10s
       timeout: 5s
       retries: 3
